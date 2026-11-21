@@ -205,8 +205,10 @@ export default function ScatterPlot({
       xParam, yParam, xScale, yScale,
       cx, cy,
     }));
+    // Deliberately leave the current selection alone. A quadrant set has no
+    // single "the" gate, and jumping the statistics to one of the four (which
+    // may well be empty) is confusing. Click a quadrant label to select it.
     onGatesChange([...gates, ...quads]);
-    onActiveGateChange(quads[1].id); // the double-positive quadrant
   };
 
   // ESC cancels in-progress polygon

@@ -468,19 +468,57 @@ thead .st-sticky { z-index: 3; background: var(--n-25); }
 /* ---------- Stats panel ---------- */
 .stats-panel { background: var(--n-0); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
 .stats-header {
-  width: 100%; display: flex; align-items: center; gap: 9px;
-  padding: 12px 16px; border: none; background: transparent;
-  font-size: 13px; color: var(--text); cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 16px 8px 8px;
+  font-size: 13px; color: var(--text);
 }
-.stats-header:hover { background: var(--n-25); }
-.stats-header .chev { color: var(--text-3); transform: rotate(90deg); transition: transform 0.2s; }
+.stats-toggle {
+  display: inline-flex; align-items: center; gap: 9px;
+  height: 32px; padding: 0 10px 0 8px;
+  border: none; border-radius: var(--radius-sm); background: transparent;
+  font: inherit; color: inherit; cursor: pointer;
+}
+.stats-toggle:hover { background: var(--n-100); }
+.stats-toggle .chev { color: var(--text-3); transform: rotate(90deg); transition: transform 0.2s; }
 .stats-panel.collapsed .chev { transform: rotate(0deg); }
-.stats-header > .icon:nth-child(2) { color: var(--brand-500); }
-.stats-header strong { font-weight: 650; }
-.stats-chip {
-  font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
-  background: var(--brand-50); color: var(--brand-700); border: 1px solid var(--brand-100);
+.stats-toggle > .icon:nth-child(2) { color: var(--brand-500); }
+.stats-toggle strong { font-weight: 650; }
+/* Population picker: says, and lets you change, what the statistics describe */
+.stats-pop { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-3); }
+.stats-pop select {
+  height: 28px; max-width: 260px; padding: 0 28px 0 11px;
+  font-size: 12px; font-weight: 600; color: var(--brand-700);
+  border: 1px solid var(--brand-100); border-radius: 999px;
+  background: var(--brand-50) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%231597b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  text-overflow: ellipsis;
 }
+.stats-pop select:hover { border-color: var(--brand-400); }
+.stats-pop select option { color: var(--text); background: var(--n-0); font-weight: 400; }
+/* Empty population: explain, don't show a table full of blanks */
+.stats-empty {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 16px 18px; border-top: 1px solid var(--border);
+  font-size: 12.5px; line-height: 1.5; color: var(--text-2);
+}
+.stats-empty-icon {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff6e0; color: #b7791f;
+}
+[data-theme="dark"] .stats-empty-icon { background: #33290f; color: #f0cd78; }
+.stats-empty > div { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 2px; }
+.stats-empty b { color: var(--text); font-size: 13px; }
+.stats-follow { font-size: 11.5px; color: var(--text-3); font-style: italic; }
+.stats-actions { display: inline-flex; gap: 6px; }
+/* Badge in the gating tree: "the statistics panel is reading this population" */
+.stats-marker {
+  width: 18px; height: 18px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px; background: var(--brand-50); color: var(--brand-600);
+  border: 1px solid var(--brand-100);
+}
+.gate-root .stats-marker { margin-left: 8px; margin-right: auto; }
 .stats-kpis { margin-left: auto; display: flex; gap: 18px; font-size: 12px; color: var(--text-3); }
 .stats-kpis b { font-family: var(--mono); font-weight: 600; color: var(--text); }
 .stats-scroll { overflow-x: auto; border-top: 1px solid var(--border); }

@@ -7,14 +7,14 @@ import { MOD, modKey } from './platform';
 import { sampleColor } from './palette';
 import NumberField from './NumberField';
 import { axisLimitProblem } from './scales';
-import { computeCombinedMasks, countMask, computeStats, fmt, descendantIds, withParamNames } from './gateUtils';
+import { computeCombinedMasks, countMask, computeStats, fmt, descendantIds, withParamNames, flattenGateTree } from './gateUtils';
 import ScatterPlot from './ScatterPlot';
 import Histogram from './Histogram';
 import StackedHistogram from './StackedHistogram';
 import SampleTable from './SampleTable';
 import CompensationDialog from './CompensationDialog';
 import { compensate, fluorChannels } from './compensation';
-import { exportSvgElement, exportPngElement, exportFigure } from './exportUtils';
+import { exportSvgElement, exportPngElement, exportFigure, downloadCsv, fileSlug } from './exportUtils';
 import Icon from './Icons';
 import './App.css';
 
@@ -38,6 +38,9 @@ export default function App() {
   const [activeGateId, setActiveGateId] = useState(null);
   const [drawTool, setDrawTool] = useState('rect');
   const [view, setView] = useState('analysis'); // 'analysis' | 'samples'
+  // Which population the statistics panel summarises: 'all' (every event),
+  // a gate id, or 'follow' (whatever gate is currently selected).
+  const [statsSource, setStatsSource] = useState('all');
   const [showHelp, setShowHelp] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -142,7 +145,7 @@ export default function App() {
     version: 1,
     savedAt: new Date().toISOString(),
     samples: sampleNames.length ? sampleNames : expectedSamples,
-    cofactor, drawTool, gates, plots, activeGateId, compensation,
+    cofactor, drawTool, gates, plots, activeGateId, compensation, statsSource,
   });
 
   const applyWorkspace = (ws) => {
@@ -154,6 +157,7 @@ export default function App() {
     setDrawTool(ws.drawTool || 'rect');
     setActiveGateId(ws.activeGateId ?? null);
     setCompensation(ws.compensation ?? null);
+    setStatsSource(ws.statsSource ?? 'all');
     setExpectedSamples(ws.samples || []);
     setView('analysis');
     // A workspace built on the demo data can bring its own samples back.
@@ -196,7 +200,7 @@ export default function App() {
     if (!files.length && !gates.length) return;
     try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildWorkspace())); } catch { /* storage unavailable */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gates, plots, cofactor, compensation, files.length, activeGateId]);
+  }, [gates, plots, cofactor, compensation, files.length, activeGateId, statsSource]);
 
   const missingSamples = expectedSamples.filter(n => !sampleNames.includes(n));
 
@@ -303,6 +307,54 @@ export default function App() {
   const activeMask = activeGateId ? gateMasks[activeGateId] : null;
   const activeGate = gates.find(g => g.id === activeGateId);
 
+  // ---------- Statistics population ----------
+  // Kept separate from the *selected* gate on purpose: selecting or drawing a
+  // gate is for editing it, and must not change which numbers are on screen.
+  const statsGate = statsSource === 'follow' ? activeGate
+    : statsSource === 'all' ? undefined
+    : gates.find(g => g.id === statsSource);
+  const statsMask = statsGate ? gateMasks[statsGate.id] : null;
+  // If the chosen gate no longer exists (deleted, or undone), fall back to all events.
+  const statsSourceShown = (statsSource === 'all' || statsSource === 'follow' || statsGate) ? statsSource : 'all';
+
+  // CSV of the statistics table: every parameter for the chosen population,
+  // for the sample on screen ('sample') or for every loaded sample ('all').
+  const exportStatsCsv = (scope) => {
+    if (!parsed) return;
+    const targets = scope === 'all' ? effFiles : [activeFile];
+    const population = statsGate ? statsGate.name : 'All events';
+    const round = (v) => (Number.isFinite(v) ? Number(v.toPrecision(7)) : null);
+    const rows = [[
+      'Sample', 'Population', 'Events', '% of parent', '% of total', 'Parameter',
+      'Mean', 'Geo mean', 'Median', 'SD', 'CV %', 'rCV %', 'Min', 'Max',
+    ]];
+    for (const f of targets) {
+      const p = f.parsed;
+      let mask = null, n = p.totalEvents, pctParent = 100;
+      if (statsGate) {
+        const masks = f === activeFile ? gateMasks : computeCombinedMasks(p, gates);
+        mask = masks[statsGate.id];
+        n = countMask(mask);
+        const parentMask = statsGate.parentId ? masks[statsGate.parentId] : null;
+        const parentN = parentMask ? countMask(parentMask) : p.totalEvents;
+        pctParent = parentN > 0 ? (n / parentN) * 100 : null;
+      }
+      const pctTotal = p.totalEvents > 0 ? (n / p.totalEvents) * 100 : null;
+      p.params.forEach((param, i) => {
+        const s = n > 0 ? computeStats(p, i, mask) : null;
+        rows.push([
+          stripExt(f.name), population, n, round(pctParent), round(pctTotal), param.name,
+          ...(s ? [s.mean, s.geoMean, s.median, s.sd, s.cv, s.rcv, s.min, s.max].map(round) : Array(8).fill(null)),
+        ]);
+      });
+    }
+    const who = scope === 'all' ? 'all-samples' : fileSlug(stripExt(activeFile.name));
+    downloadCsv(rows, `${who}_${fileSlug(population)}_statistics.csv`);
+    notify(scope === 'all'
+      ? `Statistics exported — ${targets.length} samples, “${population}”`
+      : `Statistics exported — “${population}”`, 'success');
+  };
+
   const updatePlot = (id, patch) => setPlots(ps => ps.map(p => p.id === id ? { ...p, ...patch } : p));
   const removePlot = (id) => setPlots(ps => ps.filter(p => p.id !== id));
   const duplicatePlot = (id) => setPlots(ps => {
@@ -368,6 +420,7 @@ export default function App() {
     const toRemove = new Set(roots.flatMap(r => descendantIds(r, gates)));
     setGates(gs => gs.filter(g => !toRemove.has(g.id)));
     if (toRemove.has(activeGateId)) setActiveGateId(null);
+    if (toRemove.has(statsSource)) setStatsSource('all');
     setPlots(ps => ps.map(p => toRemove.has(p.gateId) ? { ...p, gateId: null } : p));
   };
 
@@ -603,6 +656,7 @@ export default function App() {
                 onClick={() => setActiveGateId(null)}
               >
                 <span className="gate-root-name">All events</span>
+                {!statsGate && <StatsMarker />}
                 <span className="file-count">{parsed.totalEvents.toLocaleString()}</span>
               </div>
             )}
@@ -620,6 +674,7 @@ export default function App() {
                     gateMasks={gateMasks}
                     parsed={parsed}
                     activeGateId={activeGateId}
+                    statsGateId={statsGate?.id}
                     onActivate={setActiveGateId}
                     onRename={renameGate}
                     onDelete={deleteGate}
@@ -741,7 +796,19 @@ export default function App() {
               )}
             </div>
 
-            <StatsPanel parsed={parsed} gate={activeGate} mask={activeMask} />
+            <StatsPanel
+              parsed={parsed}
+              source={statsSourceShown}
+              onSourceChange={setStatsSource}
+              gate={statsGate}
+              mask={statsMask}
+              gates={gates}
+              selectedGateName={activeGate?.name}
+              parentName={statsGate?.parentId ? gates.find(g => g.id === statsGate.parentId)?.name : null}
+              pctOfParent={statsGate ? gatePct[statsGate.id] : null}
+              sampleCount={files.length}
+              onExportCsv={exportStatsCsv}
+            />
 
             <div className="plots-row" style={{ '--plot-min': `${PLOT_MIN[plotSize]}px` }}>
               {plots.map((plot) => (
@@ -835,7 +902,16 @@ export default function App() {
   );
 }
 
-function GateNode({ gate, gates, gateMasks, parsed, activeGateId, onActivate, onRename, onDelete, gateLabel, depth }) {
+// Small badge marking the population the statistics panel is reading from.
+function StatsMarker() {
+  return (
+    <span className="stats-marker" title="The statistics panel is showing this population">
+      <Icon name="table" size={11} strokeWidth={2} />
+    </span>
+  );
+}
+
+function GateNode({ gate, gates, gateMasks, parsed, activeGateId, statsGateId, onActivate, onRename, onDelete, gateLabel, depth }) {
   const children = gates.filter(g => g.parentId === gate.id);
   const mask = gateMasks[gate.id];
   const count = mask ? countMask(mask) : 0;
@@ -864,6 +940,7 @@ function GateNode({ gate, gates, gateMasks, parsed, activeGateId, onActivate, on
             value={gate.name}
             onChange={e => onRename(gate.id, e.target.value)}
           />
+          {gate.id === statsGateId && <StatsMarker />}
           <span className="gate-pct">{hasData ? `${pctOfParent}%` : '—'}</span>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(gate.id); }}
@@ -884,6 +961,7 @@ function GateNode({ gate, gates, gateMasks, parsed, activeGateId, onActivate, on
           gateMasks={gateMasks}
           parsed={parsed}
           activeGateId={activeGateId}
+          statsGateId={statsGateId}
           onActivate={onActivate}
           onRename={onRename}
           onDelete={onDelete}
@@ -1084,34 +1162,94 @@ function PlotCard({
   );
 }
 
-function StatsPanel({ parsed, gate, mask }) {
+// Statistics for one population: "All events" or a gate. The population is
+// chosen in the panel's own header and stays put while gates are drawn,
+// selected or edited (unless "follow" mode is picked).
+//   source: 'all' | 'follow' | <gate id>      gate / mask: the resolved population
+function StatsPanel({
+  parsed, source, onSourceChange, gate, mask, gates, selectedGateName,
+  parentName, pctOfParent, sampleCount, onExportCsv,
+}) {
+  const total = parsed.totalEvents;
+  const n = useMemo(() => (mask ? countMask(mask) : total), [mask, total]);
+  const empty = n === 0;
+
   const stats = useMemo(() => {
+    if (empty) return [];
     return parsed.params.map((p, i) => ({
       param: p.name,
       stain: p.stain,
       stats: computeStats(parsed, i, mask),
     }));
-  }, [parsed, mask]);
+  }, [parsed, mask, empty]);
 
-  const total = parsed.totalEvents;
-  const n = mask ? Array.from(mask).reduce((a, b) => a + b, 0) : total;
-  const pctParent = total > 0 ? (n / total * 100).toFixed(2) : '0';
-
+  const tree = useMemo(() => flattenGateTree(gates), [gates]);
+  const pctTotal = total > 0 ? (n / total * 100).toFixed(2) : '0';
   const [open, setOpen] = useState(true);
 
   return (
     <div className={open ? 'stats-panel' : 'stats-panel collapsed'}>
-      <button className="stats-header" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-        <Icon name="chevron" size={14} className="chev" />
-        <Icon name="table" size={15} />
-        <strong>Statistics</strong>
-        <span className="stats-chip">{gate ? gate.name : 'All events'}</span>
+      <div className="stats-header">
+        <button className="stats-toggle" onClick={() => setOpen(o => !o)} aria-expanded={open}
+          title={open ? 'Hide the statistics table' : 'Show the statistics table'}>
+          <Icon name="chevron" size={14} className="chev" />
+          <Icon name="table" size={15} />
+          <strong>Statistics</strong>
+        </button>
+        <label className="stats-pop" title="Choose which population the statistics describe">
+          <span>for</span>
+          <select value={source} onChange={e => onSourceChange(e.target.value)} aria-label="Statistics population">
+            <option value="all">All events</option>
+            {tree.map(({ gate: g, depth }) => (
+              <option key={g.id} value={g.id}>{' '.repeat(depth)}{depth > 0 ? '↳ ' : ''}{g.name}</option>
+            ))}
+            <option disabled>────────────</option>
+            <option value="follow">Whichever gate is selected</option>
+          </select>
+          {source === 'follow' && (
+            <span className="stats-follow">→ {selectedGateName || 'none selected, so all events'}</span>
+          )}
+        </label>
         <span className="stats-kpis">
           <span><b>{n.toLocaleString()}</b> events</span>
-          <span><b>{pctParent}%</b> of total</span>
+          {gate && parentName && Number.isFinite(pctOfParent) && (
+            <span><b>{pctOfParent.toFixed(2)}%</b> of {parentName}</span>
+          )}
+          <span><b>{pctTotal}%</b> of total</span>
         </span>
-      </button>
-      {open && <div className="stats-scroll"><table className="stats-table">
+        <span className="stats-actions">
+          <button className="btn btn-secondary btn-sm" onClick={() => onExportCsv('sample')}
+            title="Download this table as a CSV file (this sample)">
+            <Icon name="download" size={13} /> CSV
+          </button>
+          {sampleCount > 1 && (
+            <button className="btn btn-secondary btn-sm" onClick={() => onExportCsv('all')}
+              title={`Download the same statistics for all ${sampleCount} samples in one CSV file`}>
+              <Icon name="download" size={13} /> CSV · all {sampleCount} samples
+            </button>
+          )}
+        </span>
+      </div>
+
+      {open && empty && (
+        <div className="stats-empty" role="status">
+          <span className="stats-empty-icon"><Icon name="alert" size={17} /></span>
+          <div>
+            <b>{gate ? `No events fall inside “${gate.name}” in this sample.` : 'This sample contains no events.'}</b>
+            {gate && (
+              <span>
+                There is nothing to summarise, so no statistics are shown. That is normal for an empty gate, for
+                example the double-positive quadrant of a single-colour control. Pick another population above.
+              </span>
+            )}
+          </div>
+          {gate && (
+            <button className="btn btn-secondary" onClick={() => onSourceChange('all')}>Show all events</button>
+          )}
+        </div>
+      )}
+
+      {open && !empty && <div className="stats-scroll"><table className="stats-table">
         <thead>
           <tr>
             <th>Parameter</th>

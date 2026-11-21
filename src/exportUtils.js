@@ -29,6 +29,24 @@ export function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// Download a table (array of rows, each an array of cells) as a CSV file.
+// Numbers are written in full; empty / non-finite values become empty cells.
+// A UTF-8 byte-order mark is included so Excel shows characters such as the
+// "−" in quadrant names correctly.
+export function downloadCsv(rows, filename) {
+  const cell = (v) => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
+    const s = String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const text = rows.map(r => r.map(cell).join(',')).join('\r\n') + '\r\n';
+  downloadBlob(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' }), filename);
+}
+
+// Safe file-name fragment from a sample or gate name.
+export const fileSlug = (s) => String(s).replace(/−/g, '-').replace(/[^\w.+-]+/g, '_').replace(/^_+|_+$/g, '') || 'export';
+
 const serialize = (node) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(node)}`;
 

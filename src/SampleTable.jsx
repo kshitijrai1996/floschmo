@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { computeCombinedMasks, countMask, computeStats, fmt, flattenGateTree } from './gateUtils';
 import Icon from './Icons';
+import { downloadCsv } from './exportUtils';
 
 const STATS = [
   ['geoMean', 'Geo mean'],
@@ -41,24 +42,18 @@ export default function SampleTable({ files, gates, activeFileIdx, onSelectFile 
   }), [files, gates, ordered, param, stat]);
 
   const exportCSV = () => {
-    const esc = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
     const num = (v, d) => Number.isFinite(v) ? v.toFixed(d) : '';
     const header = ['Sample', 'Total events', `All events ${statLabel} ${param}`];
     ordered.forEach(({ gate }) => {
       header.push(`${gate.name} % of parent`, `${gate.name} count`, `${gate.name} ${statLabel} ${param}`);
     });
-    const lines = [header.map(esc).join(',')];
+    const table = [header];
     rows.forEach(r => {
       const vals = [r.name, r.total, num(r.allStat, 3)];
       r.cells.forEach(c => vals.push(num(c.pct, 2), c.n, num(c.stat, 3)));
-      lines.push(vals.map(esc).join(','));
+      table.push(vals);
     });
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `floschmo-samples-${param}-${stat}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadCsv(table, `floschmo-samples-${param}-${stat}.csv`);
   };
 
   return (
