@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FloSchmo — flow cytometry analysis in your browser</title>
+    <meta name="description" content="FloSchmo is a free flow cytometry analysis app that runs entirely in your browser: import FCS files, gate, compare samples and export figures. Your data never leaves your computer." />
+    <meta name="theme-color" content="#11789a" />
+    <meta name="color-scheme" content="light dark" />
+
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta property="og:title" content="FloSchmo" />
+    <meta property="og:description" content="Flow analysis for any Jo Schmo — free, private, and right in your browser." />
+    <meta property="og:type" content="website" />
+
+    <!-- Apply the saved theme before first paint to avoid a flash. -->
+    <script>
+      try {
+        var t = localStorage.getItem('floschmo.theme');
+        if (t) document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>FloSchmo needs JavaScript to run. It processes your FCS files locally in the browser.</noscript>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
